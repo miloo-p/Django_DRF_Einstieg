@@ -20,27 +20,10 @@ def validate_no_x(value):
     return value
 
 
-class MarketSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField(max_length=255)
-    location = serializers.CharField(
-        # IF CUSTOM VALIDATION OUTSIDE CLASS ADD HERE WITH validators=[name of def]
-        max_length=255, validators=[validate_no_x])
-    description = serializers.CharField()
-    net_worth = serializers.DecimalField(max_digits=100, decimal_places=2)
-
-    def create(self, validated_data):
-        return Market.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        instance.name = validated_data.get('name', instance.name)
-        instance.location = validated_data.get('location', instance.location)
-        instance.description = validated_data.get(
-            'description', instance.description)
-        instance.net_worth = validated_data.get(
-            'net_worth', instance.net_worth)
-        instance.save()
-        return instance
+class MarketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Market
+        exclude = []
 
     # CUSTOM VALIDATE INSIDE A CLASS
     # def validate_location(value):
@@ -49,34 +32,22 @@ class MarketSerializer(serializers.Serializer):
     #     return value
 
 
-class SellerDetailSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField(max_length=255)
-    contact_info = serializers.CharField()
-    # markets = MarketSerializer(many=True, read_only=True)
-    markets = serializers.StringRelatedField(
-        many=True)  # USE __str__ OF THE VIEW AS VALUE
+class SellerSerializer(serializers.ModelSerializer):
+    markets = MarketSerializer(many=True, read_only=True)
+    market_ids = serializers.PrimaryKeyRelatedField(queryset=Market.objects.all(),
+                                                    many=True,
+                                                    write_only=True,
+                                                    source="markets")
 
+    market_count = serializers.SerializerMethodField()
 
-class SellerCreateSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=255)
-    contact_info = serializers.CharField()
-    markets = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True)
+    class Meta:
+        model = Seller
+        fields = ["id", "name", "market_ids",
+                  "market_count", "markets", "contact_info"]
 
-    def validate_markets(self, value):
-        markets = Market.objects.filter(id__in=value)
-        if len(markets) != len(value):
-            raise serializers.ValidationError(
-                "One or more MarketIDs not found!")
-        return value
-
-    def create(self, validated_data):
-        market_ids = validated_data.pop('markets')
-        seller = Seller.objects.create(**validated_data)
-        markets = Market.objects.filter(id__in=market_ids)
-        seller.markets.set(markets)
-        return seller
+    def get_market_count(self, obj):
+        return obj.markets.count()
 
 
 class ProductDetailSerializer(serializers.Serializer):
